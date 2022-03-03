@@ -58,5 +58,7 @@ fn main() {
         .add_plugin(UpgradesPlugin)
         .add_plugin(WorldPlugin)
         .add_plugin(DeathPlugin)
+        // TODO remove
+        .add_plugin(bevy_prototype_debug_lines::DebugLinesPlugin::default())
         .run();
 }

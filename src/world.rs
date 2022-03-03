@@ -7,6 +7,7 @@ use crate::{
 };
 use benimator::SpriteSheetAnimation;
 use bevy::prelude::*;
+use impacted::CollisionShape;
 use std::{
     f32::consts::PI,
     fs::File,
@@ -40,13 +41,16 @@ impl Spawner {
 }
 
 #[derive(Debug)]
-enum Tile {
+pub enum Tile {
     Wall,
     Spawner(Spawner),
 }
 
+#[derive(Component)]
+pub struct Wall;
+
 impl Tile {
-    const SIZE: f32 = 24.0;
+    pub const SIZE: f32 = 24.0;
 }
 
 pub struct World {
@@ -120,15 +124,17 @@ fn spawn_world(
                 Transform::from_xyz(j as f32 * Tile::SIZE, -(i as f32 * Tile::SIZE), 0.0);
             match tile {
                 Some(Tile::Wall) => {
-                    commands.spawn_bundle(SpriteBundle {
-                        sprite: Sprite {
-                            color: Color::RED,
-                            custom_size: Some(tile_size),
-                            ..Sprite::default()
-                        },
-                        transform,
-                        ..SpriteBundle::default()
-                    });
+                    commands
+                        .spawn_bundle(SpriteBundle {
+                            sprite: Sprite {
+                                color: Color::RED,
+                                custom_size: Some(tile_size),
+                                ..Sprite::default()
+                            },
+                            transform,
+                            ..SpriteBundle::default()
+                        })
+                        .insert(Wall);
                 }
                 Some(Tile::Spawner(spawner)) => match spawner.enemy {
                     Enemy::Missile => {

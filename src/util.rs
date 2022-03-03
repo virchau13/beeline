@@ -72,3 +72,9 @@ impl Default for AnimatedSpriteData {
         }
     }
 }
+
+pub const FLT_EQUAL_THRESHOLD: f32 = 0.00001;
+/// Returns approximate equality to within FLT_EQUAL_THRESHOLD.
+pub fn flt_equal<A: Into<f32>, B: Into<f32>>(a: A, b: B) -> bool {
+    return (a.into() - b.into()).abs() < FLT_EQUAL_THRESHOLD;
+}
