@@ -80,24 +80,6 @@ pub fn spawn_player(
         .insert(Player);
 }
 
-// TODO remove
-fn window_to_world(
-    window: &Window,
-    camera: &Transform,
-    position: &Vec2,
-) -> Vec3 {
-    let center = camera.translation.truncate();
-    let half_width = (window.width() / 2.0) * camera.scale.x;
-    let half_height = (window.height() / 2.0) * camera.scale.y;
-    let left = center.x - half_width;
-    let bottom = center.y - half_height;
-    Vec3::new(
-        left + position.x * camera.scale.x,
-        bottom + position.y * camera.scale.y,
-        0.0,  // I'm working in 2D
-    )
-}
-
 fn move_player(
     windows: Res<Windows>,
     time: Res<Time>,
@@ -105,9 +87,6 @@ fn move_player(
     camera: Query<&Camera, With<MainCamera>>,
     mut transform: Query<&mut Transform, (With<Player>, Without<MainCamera>)>,
     walls: Query<&Transform, (With<Wall>, Without<Player>)>,
-    // TODO remove
-    mut dbg_lines: ResMut<bevy_prototype_debug_lines::DebugLines>,
-    cam_trans: Query<&Transform, (With<MainCamera>, Without<Wall>)>
 ) {
     let camera = camera.single();
     let window = windows.get(camera.window).unwrap();
@@ -122,7 +101,7 @@ fn move_player(
         // between 0 and 1
         let velocity_scale = relative_pos.length().min(magnitude_cap) / magnitude_cap;
 
-        let mut velocity = polar_to_cartesian(velocity_angle, velocity_scale * Player::VELOCITY)
+        let velocity = polar_to_cartesian(velocity_angle, velocity_scale * Player::VELOCITY)
             * time.delta_seconds()
             * if upgrades.has_upgrade(Upgrades::DOUBLE_SPEED) {
                 // Double velocity if player has double speed upgrade
@@ -139,12 +118,8 @@ fn move_player(
             // to the place where it's going to go
             velocity
         );
-        // TODO remove
-        let mut line_f = |a: Vec2, b: Vec2| {
-            let cam = cam_trans.single();
-            dbg_lines.line(a.extend(0.), b.extend(0.), 0.1);
-        };
-        line_f(player_normal.p, player_normal.p + player_normal.v);
+        let mut new_x = transform.translation.x + velocity.x;
+        let mut new_y = transform.translation.y + velocity.y;
         for wall in walls.iter() {
             let wall_size = Vec2::splat(Tile::SIZE);
             let wall_lines = rect_to_lines(wall.translation.truncate() - wall_size/2., wall_size);
@@ -157,30 +132,45 @@ fn move_player(
                     next
                 });
             if let Some((t, collide_line)) = collide {
-                println!("collide! collide_line = {collide_line:?}, t = {}, prev velocity = {}", t, velocity);
-                // Shorten it so it doesn't collide anymore
-                let short_v = velocity * t; // This brings it right to the wall
-                let mut rest_v = velocity * (1.-t); // This is the leftover velocity
-                if flt_equal(collide_line.v.x, 0.) {
+                println!("about to collide in {t} frames");
+                // We want to offset it so it won't collide anymore.
+                // We need to check which corner (top left or top right) of the bee is going to
+                // collide first, so we know how to offset it.
+                // Don't ask me how I came up with this.
+                let mut top_right_corner_collide = (velocity.x >= 0.) ^ (velocity.y >= 0.);
+                let vert_collide = flt_equal(collide_line.v.x, 0.);
+                if vert_collide {
                     println!("vert collide");
-                    // Line is vertical, remove horizontal velocity past this point
-                    rest_v.x = 0.;
-                    velocity.x = 0.;
+                    top_right_corner_collide = !top_right_corner_collide;
                 } else {
                     println!("horiz collide");
-                    // Line is horizontal, remove vertical velocity
-                    rest_v.y = 0.;
-                    velocity.y = 0.;
                 }
-                // Shouldn't collide anymore
-                // velocity = short_v + rest_v;
-                println!("new velocity = {}", velocity);
-                // That's probably all we need, right?
+                dbg!(&top_right_corner_collide);
+                // (x-basis, y-basis)
+                let bee_basis = (polar_to_cartesian(velocity_angle - PI / 2., 1.), polar_to_cartesian(velocity_angle, 1.));
+                let corner_x_offset = if top_right_corner_collide {
+                    Player::SIZE/2.
+                } else {
+                    // top left corner
+                    -Player::SIZE/2.
+                };
+                let corner_offset = corner_x_offset * bee_basis.0 + Player::SIZE/2. * bee_basis.1;
+                let corner_pos = transform.translation.truncate() + corner_offset;
+                // We want to set the corner such that it 'just touches' the wall.
+                // Hence (current corner) + (push) touches wall.
+                let push: Vec2 = if vert_collide { 
+                    (collide_line.p.x - corner_pos.x, 0.)
+                } else { 
+                    (0., collide_line.p.y - corner_pos.y)
+                }.into();
+                dbg!(&corner_offset, &push);
+                new_x += push.x - velocity.x;
+                new_y += push.y - velocity.y;
                 break;
             }
         }
-        transform.translation.x += velocity.x;
-        transform.translation.y += velocity.y;
+        transform.translation.x = new_x;
+        transform.translation.y = new_y;
     }
 }
 
